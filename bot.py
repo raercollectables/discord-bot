@@ -51,7 +51,7 @@ async def on_message(message):
         return
 
     await message.channel.send(
-        f"{role.mention}\n\n{message.content}",
+        f"{message.content}\n\n{role.mention}"
         allowed_mentions=discord.AllowedMentions(roles=True)
     )
 
