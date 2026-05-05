@@ -50,9 +50,9 @@ async def on_message(message):
         print(f"Role not found: {role_id}")
         return
 
-await message.channel.send(
-    f"{message.content} {role.mention}",
-    allowed_mentions=discord.AllowedMentions(roles=True)
-)
+    await message.channel.send(
+        f"{message.content} {role.mention}",
+        allowed_mentions=discord.AllowedMentions(roles=True)
+    )
 
 bot.run(TOKEN)
