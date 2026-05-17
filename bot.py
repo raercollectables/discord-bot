@@ -41,21 +41,26 @@ async def on_message(message):
         return
 
     # Radar announcement/news/alerts channels
-    if message.channel.id in ANNOUNCEMENT_CHANNELS:
-        role = message.guild.get_role(RADAR_MEMBER_ROLE)
+   if message.channel.id in ANNOUNCEMENT_CHANNELS:
+    role = message.guild.get_role(RADAR_MEMBER_ROLE)
 
-        if role is None:
-            print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
-            return
-
-        await message.delete()
-
-        await message.channel.send(
-            f"{message.content} {role.mention}",
-            allowed_mentions=discord.AllowedMentions(roles=True)
-        )
-
+    if role is None:
+        print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
         return
+
+    try:
+        await message.delete()
+    except discord.Forbidden:
+        print("Missing Manage Messages permission — could not delete original.")
+    except discord.HTTPException as e:
+        print(f"Could not delete message: {e}")
+
+    await message.channel.send(
+        f"{message.content} {role.mention}",
+        allowed_mentions=discord.AllowedMentions(roles=True)
+    )
+
+    return
 
     # In-store stock channels
     if message.channel.id in CHANNEL_TO_ROLE:
