@@ -31,39 +31,42 @@ RADAR_MEMBER_ROLE = 1467963589330735340
 
 
 @bot.event
-async def on_ready():
-    print(f"Bot is online as {bot.user}")
-
-
-@bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # Radar announcement/news/alerts channels
-   if message.channel.id in ANNOUNCEMENT_CHANNELS:
-    role = message.guild.get_role(RADAR_MEMBER_ROLE)
+    print(f"Message seen in: {message.channel.name} / {message.channel.id}")
+    print(f"Content: {message.content}")
 
-    if role is None:
-        print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
+    if message.channel.id in ANNOUNCEMENT_CHANNELS:
+        print("Matched announcement channel")
+
+        role = message.guild.get_role(RADAR_MEMBER_ROLE)
+
+        if role is None:
+            print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
+            return
+
+        try:
+            await message.delete()
+            print("Original message deleted")
+        except Exception as e:
+            print(f"Delete failed: {e}")
+
+        try:
+            await message.channel.send(
+                f"{message.content} {role.mention}",
+                allowed_mentions=discord.AllowedMentions(roles=True)
+            )
+            print("Announcement reposted")
+        except Exception as e:
+            print(f"Send failed: {e}")
+
         return
 
-    try:
-        await message.delete()
-    except discord.Forbidden:
-        print("Missing Manage Messages permission — could not delete original.")
-    except discord.HTTPException as e:
-        print(f"Could not delete message: {e}")
-
-    await message.channel.send(
-        f"{message.content} {role.mention}",
-        allowed_mentions=discord.AllowedMentions(roles=True)
-    )
-
-    return
-
-    # In-store stock channels
     if message.channel.id in CHANNEL_TO_ROLE:
+        print("Matched in-store channel")
+
         role_id = CHANNEL_TO_ROLE[message.channel.id]
         role = message.guild.get_role(role_id)
 
@@ -77,6 +80,8 @@ async def on_message(message):
         )
 
         return
+
+    print("Channel not mapped")
 
 
 bot.run(TOKEN)
