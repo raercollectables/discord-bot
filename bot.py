@@ -31,6 +31,11 @@ RADAR_MEMBER_ROLE = 1467963589330735340
 
 
 @bot.event
+async def on_ready():
+    print(f"Bot is online as {bot.user}")
+
+
+@bot.event
 async def on_message(message):
     if message.author.bot:
         return
@@ -38,6 +43,8 @@ async def on_message(message):
     print(f"Message seen in: {message.channel.name} / {message.channel.id}")
     print(f"Content: {message.content}")
 
+    # Radar announcement/news/alerts channels
+    # Deletes original message, reposts text + images + RADAR MEMBER tag
     if message.channel.id in ANNOUNCEMENT_CHANNELS:
         print("Matched announcement channel")
 
@@ -47,23 +54,33 @@ async def on_message(message):
             print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
             return
 
+        files = []
+
+        for attachment in message.attachments:
+            try:
+                file = await attachment.to_file()
+                files.append(file)
+            except Exception as e:
+                print(f"Attachment failed: {e}")
+
         try:
             await message.delete()
             print("Original message deleted")
         except Exception as e:
             print(f"Delete failed: {e}")
 
-        try:
-            await message.channel.send(
-                f"{message.content} {role.mention}",
-                allowed_mentions=discord.AllowedMentions(roles=True)
-            )
-            print("Announcement reposted")
-        except Exception as e:
-            print(f"Send failed: {e}")
+        await message.channel.send(
+            content=f"{message.content} {role.mention}",
+            files=files,
+            allowed_mentions=discord.AllowedMentions(roles=True)
+        )
+
+        print("Announcement reposted")
 
         return
 
+    # In-store stock channels
+    # Keeps original message, reposts text + images + state role tag
     if message.channel.id in CHANNEL_TO_ROLE:
         print("Matched in-store channel")
 
@@ -74,14 +91,29 @@ async def on_message(message):
             print(f"In-store role not found: {role_id}")
             return
 
+        files = []
+
+        for attachment in message.attachments:
+            try:
+                file = await attachment.to_file()
+                files.append(file)
+            except Exception as e:
+                print(f"Attachment failed: {e}")
+
         await message.channel.send(
-            f"{message.content} {role.mention}",
+            content=f"{message.content} {role.mention}",
+            files=files,
             allowed_mentions=discord.AllowedMentions(roles=True)
         )
+
+        print("In-store reposted")
 
         return
 
     print("Channel not mapped")
+
+
+bot.run(TOKEN)
 
 
 bot.run(TOKEN)
