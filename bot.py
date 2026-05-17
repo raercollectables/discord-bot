@@ -8,7 +8,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
+# In-store channels: original message stays, bot reposts with state role
 CHANNEL_TO_ROLE = {
     1464844020101419184: 1467959378274681047,  # WA IN STORE
     1464843010050359532: 1467959569400467527,  # NSW IN STORE
@@ -20,10 +20,11 @@ CHANNEL_TO_ROLE = {
     1464844304961765529: 1467959657942351892,  # NT IN STORE
 }
 
+# Radar channels: delete original, repost with RADAR MEMBER role
 ANNOUNCEMENT_CHANNELS = {
     1466323776756256861,  # radar-announcements
     1466323977856352349,  # radar-alerts
-    1466324139626332265   # radar-news
+    1466324139626332265,  # radar-news
 }
 
 RADAR_MEMBER_ROLE = 1467963589330735340
@@ -33,34 +34,19 @@ RADAR_MEMBER_ROLE = 1467963589330735340
 async def on_ready():
     print(f"Bot is online as {bot.user}")
 
-    print("Servers:")
-
-    for guild in bot.guilds:
-        print(f"- {guild.name} / {guild.id}")
-
-        for channel in guild.text_channels:
-            print(f" #{channel.name} / {channel.id}")
-
 
 @bot.event
 async def on_message(message):
-
-    print("MESSAGE EVENT TRIGGERED")
-
-    print(f"Channel: {message.channel.name} / {message.channel.id}")
-
-    print(f"Author: {message.author}")
-
-    print(f"Content: {message.content}")
-
-
     if message.author.bot:
         return
 
-
+    # Radar announcement/news/alerts channels
     if message.channel.id in ANNOUNCEMENT_CHANNELS:
-
         role = message.guild.get_role(RADAR_MEMBER_ROLE)
+
+        if role is None:
+            print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
+            return
 
         await message.delete()
 
@@ -71,25 +57,21 @@ async def on_message(message):
 
         return
 
+    # In-store stock channels
+    if message.channel.id in CHANNEL_TO_ROLE:
+        role_id = CHANNEL_TO_ROLE[message.channel.id]
+        role = message.guild.get_role(role_id)
 
-    if message.channel.id not in CHANNEL_TO_ROLE:
-        print("This channel is not mapped.")
+        if role is None:
+            print(f"In-store role not found: {role_id}")
+            return
+
+        await message.channel.send(
+            f"{message.content} {role.mention}",
+            allowed_mentions=discord.AllowedMentions(roles=True)
+        )
+
         return
-
-
-    role_id = CHANNEL_TO_ROLE[message.channel.id]
-    role = message.guild.get_role(role_id)
-
-
-    if role is None:
-        print(f"Role not found: {role_id}")
-        return
-
-
-    await message.channel.send(
-        f"{message.content} {role.mention}",
-        allowed_mentions=discord.AllowedMentions(roles=True)
-    )
 
 
 bot.run(TOKEN)
