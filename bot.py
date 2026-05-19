@@ -14,31 +14,33 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# In-store channels: original message stays, bot reposts with state role
 CHANNEL_TO_ROLE = {
-    1464844020101419184: 1467959378274681047,  # WA IN STORE
-    1464843010050359532: 1467959569400467527,  # NSW IN STORE
-    1464843455908806666: 1467959606822043832,  # VIC IN STORE
-    1464843626424172625: 1467960267139842213,  # QLD IN STORE
-    1464844205628329985: 1467959638413541376,  # SA IN STORE
-    1464844447375298713: 1467960394579710015,  # TAS IN STORE
-    1485255219414831164: 1467960582886920446,  # ACT IN STORE
-    1464844304961765529: 1467959657942351892,  # NT IN STORE
+    1464844020101419184: 1467959378274681047,
+    1464843010050359532: 1467959569400467527,
+    1464843455908806666: 1467959606822043832,
+    1464843626424172625: 1467960267139842213,
+    1464844205628329985: 1467959638413541376,
+    1464844447375298713: 1467960394579710015,
+    1485255219414831164: 1467960582886920446,
+    1464844304961765529: 1467959657942351892,
 }
 
-# Radar channels: delete original, repost with RADAR MEMBER role
 ANNOUNCEMENT_CHANNELS = {
-    1466323776756256861,  # radar-announcements
-    1466323977856352349,  # radar-alerts
-    1466324139626332265,  # radar-news
+    1466323776756256861,
+    1466323977856352349,
+    1466324139626332265,
 }
 
 RADAR_MEMBER_ROLE = 1467963589330735340
 
-# Giveaway settings
 GIVEAWAY_FEED_CHANNEL = 1506346834962944001
 GIVEAWAY_ADMIN_ROLE = 1506348836895854712
 WINNERS_CHANNEL = 1506345396039979008
+LEADERBOARD_CHANNEL = 1506349608945586237
+
+EXCLUDED_USERS = [
+    1461748046416318574
+]
 
 TEXT_ALERT_POINTS = 1
 PHOTO_ALERT_POINTS = 2
@@ -50,11 +52,16 @@ def current_month():
     return datetime.now().strftime("%Y-%m")
 
 
+def month_title():
+    return datetime.now().strftime("%B %Y").upper()
+
+
 def default_data():
     return {
         "month": current_month(),
         "entries": {},
-        "tracked_messages": {}
+        "tracked_messages": {},
+        "leaderboard_message_id": None
     }
 
 
@@ -73,6 +80,7 @@ def load_data():
 
     data.setdefault("entries", {})
     data.setdefault("tracked_messages", {})
+    data.setdefault("leaderboard_message_id", None)
 
     return data
 
@@ -88,6 +96,60 @@ def has_photo(message):
 
 def is_giveaway_admin(member):
     return any(role.id == GIVEAWAY_ADMIN_ROLE for role in member.roles)
+
+
+def build_leaderboard_text(data):
+    text = f"🏆 **{month_title()} GIVEAWAY LEADERBOARD**\n\n"
+
+    if not data["entries"]:
+        text += "No entries yet this month.\n\n"
+        text += "Post in-store alerts to earn giveaway entries."
+        return text
+
+    sorted_entries = sorted(
+        data["entries"].items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:10]
+
+    medals = ["🥇", "🥈", "🥉"]
+
+    for index, (user_id, points) in enumerate(sorted_entries, start=1):
+        medal = medals[index - 1] if index <= 3 else f"**{index}.**"
+        text += f"{medal} <@{user_id}> — **{points} entries**\n"
+
+    text += "\nUpdates automatically."
+    return text
+
+
+async def update_monthly_leaderboard():
+    data = load_data()
+    channel = bot.get_channel(LEADERBOARD_CHANNEL)
+
+    if not channel:
+        print("Leaderboard channel not found")
+        return
+
+    leaderboard_text = build_leaderboard_text(data)
+
+    if data.get("leaderboard_message_id"):
+        try:
+            msg = await channel.fetch_message(data["leaderboard_message_id"])
+            await msg.edit(
+                content=leaderboard_text,
+                allowed_mentions=discord.AllowedMentions(users=True)
+            )
+            return
+        except Exception as e:
+            print(f"Could not edit leaderboard message, creating new one: {e}")
+
+    msg = await channel.send(
+        leaderboard_text,
+        allowed_mentions=discord.AllowedMentions(users=True)
+    )
+
+    data["leaderboard_message_id"] = msg.id
+    save_data(data)
 
 
 async def log_giveaway_entry(message, points, total):
@@ -114,6 +176,8 @@ async def on_ready():
     except Exception as e:
         print(f"Slash command sync failed: {e}")
 
+    await update_monthly_leaderboard()
+
 
 @bot.event
 async def on_message(message):
@@ -136,8 +200,6 @@ async def on_message(message):
 
         return files
 
-    # Radar announcement/news/alerts channels
-    # Deletes original, then reposts text + images + Radar Member tag
     if message.channel.id in ANNOUNCEMENT_CHANNELS:
         print("Matched announcement channel")
 
@@ -162,11 +224,8 @@ async def on_message(message):
         )
 
         print("Announcement reposted")
-
         return
 
-    # In-store stock channels
-    # Keeps original, reposts text + images + state role tag
     if message.channel.id in CHANNEL_TO_ROLE:
         print("Matched in-store channel")
 
@@ -177,32 +236,36 @@ async def on_message(message):
             print(f"In-store role not found: {role_id}")
             return
 
-        # GIVEAWAY TRACKING
-        data = load_data()
-        user_id = str(message.author.id)
+        if message.author.id not in EXCLUDED_USERS:
+            data = load_data()
+            user_id = str(message.author.id)
 
-        data["entries"].setdefault(user_id, 0)
+            data["entries"].setdefault(user_id, 0)
 
-        if has_photo(message):
-            points = PHOTO_ALERT_POINTS
+            if has_photo(message):
+                points = PHOTO_ALERT_POINTS
+            else:
+                points = TEXT_ALERT_POINTS
+
+            data["entries"][user_id] += points
+
+            data["tracked_messages"][str(message.id)] = {
+                "user_id": user_id,
+                "points": points,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+
+            save_data(data)
+
+            await log_giveaway_entry(
+                message,
+                points,
+                data["entries"][user_id]
+            )
+
+            await update_monthly_leaderboard()
         else:
-            points = TEXT_ALERT_POINTS
-
-        data["entries"][user_id] += points
-
-        data["tracked_messages"][str(message.id)] = {
-            "user_id": user_id,
-            "points": points,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-
-        save_data(data)
-
-        await log_giveaway_entry(
-            message,
-            points,
-            data["entries"][user_id]
-        )
+            print("User is excluded from giveaway entries")
 
         files = await collect_files()
 
@@ -213,7 +276,6 @@ async def on_message(message):
         )
 
         print("In-store reposted")
-
         return
 
     print("Channel not mapped")
@@ -261,6 +323,8 @@ async def on_message_delete(message):
             allowed_mentions=discord.AllowedMentions(users=True)
         )
 
+    await update_monthly_leaderboard()
+
 
 @bot.tree.command(name="entries", description="Check your monthly giveaway entries")
 async def entries(interaction: discord.Interaction):
@@ -277,21 +341,7 @@ async def entries(interaction: discord.Interaction):
 @bot.tree.command(name="leaderboard", description="Show the monthly giveaway leaderboard")
 async def leaderboard(interaction: discord.Interaction):
     data = load_data()
-
-    if not data["entries"]:
-        await interaction.response.send_message("No giveaway entries yet this month.")
-        return
-
-    sorted_entries = sorted(
-        data["entries"].items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:10]
-
-    text = "🏆 **Monthly Giveaway Leaderboard**\n\n"
-
-    for index, (user_id, points) in enumerate(sorted_entries, start=1):
-        text += f"**{index}.** <@{user_id}> — **{points} entries**\n"
+    text = build_leaderboard_text(data)
 
     await interaction.response.send_message(
         text,
@@ -350,8 +400,10 @@ async def resetmonth(interaction: discord.Interaction):
     data = default_data()
     save_data(data)
 
+    await update_monthly_leaderboard()
+
     await interaction.response.send_message(
-        "✅ Monthly giveaway entries have been reset."
+        "✅ Monthly giveaway entries have been reset and a new leaderboard has been created."
     )
 
 
