@@ -81,7 +81,7 @@ async def on_message(message):
 
     # In-store stock channels
     # Keeps original message, reposts text + images + state role tag
-    if message.channel.id in CHANNEL_TO_ROLE:
+        if message.channel.id in CHANNEL_TO_ROLE:
         print("Matched in-store channel")
 
         role_id = CHANNEL_TO_ROLE[message.channel.id]
@@ -109,7 +109,7 @@ async def on_message(message):
         print("In-store reposted")
 
         return
-
+        
     print("Channel not mapped")
 
 
