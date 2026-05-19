@@ -42,9 +42,22 @@ async def on_message(message):
 
     print(f"Message seen in: {message.channel.name} / {message.channel.id}")
     print(f"Content: {message.content}")
+    print(f"Attachments: {len(message.attachments)}")
+
+    async def collect_files():
+        files = []
+
+        for attachment in message.attachments:
+            try:
+                print(f"Downloading attachment: {attachment.filename}")
+                files.append(await attachment.to_file())
+            except Exception as e:
+                print(f"Attachment failed: {e}")
+
+        return files
 
     # Radar announcement/news/alerts channels
-    # Deletes original message, reposts text + images + RADAR MEMBER tag
+    # Deletes original, then reposts text + images + Radar Member tag
     if message.channel.id in ANNOUNCEMENT_CHANNELS:
         print("Matched announcement channel")
 
@@ -54,14 +67,7 @@ async def on_message(message):
             print(f"Radar Member role not found: {RADAR_MEMBER_ROLE}")
             return
 
-        files = []
-
-        for attachment in message.attachments:
-            try:
-                file = await attachment.to_file()
-                files.append(file)
-            except Exception as e:
-                print(f"Attachment failed: {e}")
+        files = await collect_files()
 
         try:
             await message.delete()
@@ -80,8 +86,8 @@ async def on_message(message):
         return
 
     # In-store stock channels
-    # Keeps original message, reposts text + images + state role tag
-        if message.channel.id in CHANNEL_TO_ROLE:
+    # Keeps original, reposts text + images + state role tag
+    if message.channel.id in CHANNEL_TO_ROLE:
         print("Matched in-store channel")
 
         role_id = CHANNEL_TO_ROLE[message.channel.id]
@@ -91,14 +97,7 @@ async def on_message(message):
             print(f"In-store role not found: {role_id}")
             return
 
-        files = []
-
-        for attachment in message.attachments:
-            try:
-                file = await attachment.to_file()
-                files.append(file)
-            except Exception as e:
-                print(f"Attachment failed: {e}")
+        files = await collect_files()
 
         await message.channel.send(
             content=f"{message.content} {role.mention}",
@@ -109,11 +108,7 @@ async def on_message(message):
         print("In-store reposted")
 
         return
-        
+
     print("Channel not mapped")
-
-
-bot.run(TOKEN)
-
 
 bot.run(TOKEN)
