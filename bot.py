@@ -1,13 +1,16 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 
 import os
 import json
 import random
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 TOKEN = os.getenv("TOKEN")
+
+AWST = ZoneInfo("Australia/Perth")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -49,11 +52,11 @@ DATA_FILE = "giveaway_entries.json"
 
 
 def current_month():
-    return datetime.now().strftime("%Y-%m")
+    return datetime.now(AWST).strftime("%Y-%m")
 
 
 def month_title():
-    return datetime.now().strftime("%B %Y").upper()
+    return datetime.now(AWST).strftime("%B %Y").upper()
 
 
 def default_data():
@@ -103,14 +106,15 @@ def build_leaderboard_text(data):
 
     if not data["entries"]:
         text += "No entries yet this month.\n\n"
-        text += "Post in-store alerts to earn giveaway entries."
+        text += "Post in-store alerts to earn giveaway entries.\n\n"
+        text += "📊 Only the Top 100 members are displayed."
         return text
 
     sorted_entries = sorted(
         data["entries"].items(),
         key=lambda x: x[1],
         reverse=True
-    )[:10]
+    )[:100]
 
     medals = ["🥇", "🥈", "🥉"]
 
@@ -118,6 +122,8 @@ def build_leaderboard_text(data):
         medal = medals[index - 1] if index <= 3 else f"**{index}.**"
         text += f"{medal} <@{user_id}> — **{points} entries**\n"
 
+    text += "\n📊 Only the Top 100 members are displayed."
+    text += "\nPrevious monthly leaderboards remain in this channel."
     text += "\nUpdates automatically."
     return text
 
@@ -152,6 +158,39 @@ async def update_monthly_leaderboard():
     save_data(data)
 
 
+@tasks.loop(minutes=1)
+async def monthly_reset_checker():
+    now = datetime.now(AWST)
+
+    if now.day == 1 and now.hour == 0 and now.minute == 0:
+        old_month = None
+
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                old_data = json.load(f)
+                old_month = old_data.get("month")
+
+        if old_month == current_month():
+            return
+
+        data = default_data()
+        save_data(data)
+
+        await update_monthly_leaderboard()
+
+        winners_channel = bot.get_channel(WINNERS_CHANNEL)
+
+        if winners_channel:
+            await winners_channel.send(
+                f"📡 **{month_title()} Giveaway is now live!**\n\n"
+                f"Post in-store alerts to earn giveaway entries.\n"
+                f"Text alert = **{TEXT_ALERT_POINTS} entry**\n"
+                f"Photo alert = **{PHOTO_ALERT_POINTS} entries**\n\n"
+                f"Check your points in <#{LEADERBOARD_CHANNEL}> and your entries in <#{GIVEAWAY_FEED_CHANNEL}>.\n\n"
+                f"📊 Only the Top 100 members are displayed on the leaderboard."
+            )
+
+
 async def log_giveaway_entry(message, points, total):
     feed_channel = bot.get_channel(GIVEAWAY_FEED_CHANNEL)
 
@@ -175,6 +214,9 @@ async def on_ready():
         print(f"Synced {len(synced)} slash commands")
     except Exception as e:
         print(f"Slash command sync failed: {e}")
+
+    if not monthly_reset_checker.is_running():
+        monthly_reset_checker.start()
 
     await update_monthly_leaderboard()
 
