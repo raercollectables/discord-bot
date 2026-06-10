@@ -41,13 +41,17 @@ GIVEAWAY_ADMIN_ROLE = 1506348836895854712
 WINNERS_CHANNEL = 1506345396039979008
 LEADERBOARD_CHANNEL = 1506349608945586237
 
+SUCCESS_CHANNEL = 1466324272447488011
+TESTIMONIALS_CHANNEL = 1464841969368039700
+
 EXCLUDED_USERS = [
     1461748046416318574
 ]
 
 TEXT_ALERT_POINTS = 1
 PHOTO_ALERT_POINTS = 2
-DELETE_GRACE_SECONDS = 30
+SUCCESS_POINTS = 5
+TESTIMONIAL_POINTS = 10
 DATA_FILE = "giveaway_entries.json"
 
 
@@ -185,7 +189,9 @@ async def monthly_reset_checker():
                 f"📡 **{month_title()} Giveaway is now live!**\n\n"
                 f"Post in-store alerts to earn giveaway entries.\n"
                 f"Text alert = **{TEXT_ALERT_POINTS} entry**\n"
-                f"Photo alert = **{PHOTO_ALERT_POINTS} entries**\n\n"
+                f"Photo alert = **{PHOTO_ALERT_POINTS} entries**\n"
+                f"Success post = **{SUCCESS_POINTS} entries**\n"
+                f"Testimonial post = **{TESTIMONIAL_POINTS} entries**\n\n"
                 f"Check your points in <#{LEADERBOARD_CHANNEL}> and your entries in <#{GIVEAWAY_FEED_CHANNEL}>.\n\n"
                 f"📊 Only the Top 100 members are displayed on the leaderboard."
             )
@@ -203,6 +209,34 @@ async def log_giveaway_entry(message, points, total):
             f"Source: {message.jump_url}",
             allowed_mentions=discord.AllowedMentions(users=True)
         )
+
+
+async def add_giveaway_entries(message, points):
+    if message.author.id in EXCLUDED_USERS:
+        print("User is excluded from giveaway entries")
+        return
+
+    data = load_data()
+    user_id = str(message.author.id)
+
+    data["entries"].setdefault(user_id, 0)
+    data["entries"][user_id] += points
+
+    data["tracked_messages"][str(message.id)] = {
+        "user_id": user_id,
+        "points": points,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    save_data(data)
+
+    await log_giveaway_entry(
+        message,
+        points,
+        data["entries"][user_id]
+    )
+
+    await update_monthly_leaderboard()
 
 
 @bot.event
@@ -268,6 +302,18 @@ async def on_message(message):
         print("Announcement reposted")
         return
 
+    if message.channel.id == SUCCESS_CHANNEL:
+        print("Matched success channel")
+
+        await add_giveaway_entries(message, SUCCESS_POINTS)
+        return
+
+    if message.channel.id == TESTIMONIALS_CHANNEL:
+        print("Matched testimonials channel")
+
+        await add_giveaway_entries(message, TESTIMONIAL_POINTS)
+        return
+
     if message.channel.id in CHANNEL_TO_ROLE:
         print("Matched in-store channel")
 
@@ -278,36 +324,12 @@ async def on_message(message):
             print(f"In-store role not found: {role_id}")
             return
 
-        if message.author.id not in EXCLUDED_USERS:
-            data = load_data()
-            user_id = str(message.author.id)
-
-            data["entries"].setdefault(user_id, 0)
-
-            if has_photo(message):
-                points = PHOTO_ALERT_POINTS
-            else:
-                points = TEXT_ALERT_POINTS
-
-            data["entries"][user_id] += points
-
-            data["tracked_messages"][str(message.id)] = {
-                "user_id": user_id,
-                "points": points,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-
-            save_data(data)
-
-            await log_giveaway_entry(
-                message,
-                points,
-                data["entries"][user_id]
-            )
-
-            await update_monthly_leaderboard()
+        if has_photo(message):
+            points = PHOTO_ALERT_POINTS
         else:
-            print("User is excluded from giveaway entries")
+            points = TEXT_ALERT_POINTS
+
+        await add_giveaway_entries(message, points)
 
         files = await collect_files()
 
@@ -336,17 +358,8 @@ async def on_message_delete(message):
 
     info = data["tracked_messages"][msg_id]
 
-    created_at = datetime.fromisoformat(info["created_at"])
-    now = datetime.now(timezone.utc)
-    seconds_since_posted = (now - created_at).total_seconds()
-
     user_id = info["user_id"]
     points = info["points"]
-
-    if seconds_since_posted <= DELETE_GRACE_SECONDS:
-        del data["tracked_messages"][msg_id]
-        save_data(data)
-        return
 
     data["entries"][user_id] = max(0, data["entries"].get(user_id, 0) - points)
 
@@ -450,3 +463,4 @@ async def resetmonth(interaction: discord.Interaction):
 
 
 bot.run(TOKEN)
+
