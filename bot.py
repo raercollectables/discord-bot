@@ -462,5 +462,122 @@ async def resetmonth(interaction: discord.Interaction):
     )
 
 
-bot.run(TOKEN)
+@bot.tree.command(name="giveentries", description="Give giveaway entries to a member")
+@app_commands.describe(
+    user="User to receive entries",
+    amount="Number of entries to give"
+)
+async def giveentries(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    amount: int
+):
+    if not is_giveaway_admin(interaction.user):
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True
+        )
+        return
 
+    if amount <= 0:
+        await interaction.response.send_message(
+            "❌ Amount must be greater than 0.",
+            ephemeral=True
+        )
+        return
+
+    data = load_data()
+    user_id = str(user.id)
+
+    data["entries"].setdefault(user_id, 0)
+    data["entries"][user_id] += amount
+
+    save_data(data)
+    await update_monthly_leaderboard()
+
+    await interaction.response.send_message(
+        f"✅ Added **{amount}** giveaway entries to {user.mention}.\n"
+        f"🎟️ New total: **{data['entries'][user_id]}**",
+        allowed_mentions=discord.AllowedMentions(users=True)
+    )
+
+
+@bot.tree.command(name="removeentries", description="Remove giveaway entries from a member")
+@app_commands.describe(
+    user="User to remove entries from",
+    amount="Number of entries to remove"
+)
+async def removeentries(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    amount: int
+):
+    if not is_giveaway_admin(interaction.user):
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True
+        )
+        return
+
+    if amount <= 0:
+        await interaction.response.send_message(
+            "❌ Amount must be greater than 0.",
+            ephemeral=True
+        )
+        return
+
+    data = load_data()
+    user_id = str(user.id)
+
+    data["entries"].setdefault(user_id, 0)
+    data["entries"][user_id] = max(0, data["entries"][user_id] - amount)
+
+    save_data(data)
+    await update_monthly_leaderboard()
+
+    await interaction.response.send_message(
+        f"✅ Removed **{amount}** giveaway entries from {user.mention}.\n"
+        f"🎟️ New total: **{data['entries'][user_id]}**",
+        allowed_mentions=discord.AllowedMentions(users=True)
+    )
+
+
+@bot.tree.command(name="setentries", description="Set a member's giveaway entries")
+@app_commands.describe(
+    user="User whose entries you want to set",
+    amount="Exact number of entries"
+)
+async def setentries(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    amount: int
+):
+    if not is_giveaway_admin(interaction.user):
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True
+        )
+        return
+
+    if amount < 0:
+        await interaction.response.send_message(
+            "❌ Amount cannot be negative.",
+            ephemeral=True
+        )
+        return
+
+    data = load_data()
+    user_id = str(user.id)
+
+    data["entries"][user_id] = amount
+
+    save_data(data)
+    await update_monthly_leaderboard()
+
+    await interaction.response.send_message(
+        f"✅ Set {user.mention}'s giveaway entries to **{amount}**.",
+        allowed_mentions=discord.AllowedMentions(users=True)
+    )
+
+
+bot.run(TOKEN)
